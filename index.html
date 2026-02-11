@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Warehouse System</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
+
+<style>
+body{margin:0;font-family:Segoe UI;background:#0f172a;color:white}
+.container{max-width:1200px;margin:auto;padding:20px}
+.card{background:#1e293b;padding:20px;border-radius:16px;margin-bottom:20px}
+input,button,select{padding:10px;border-radius:8px;border:none;width:100%;margin:5px 0}
+input,select{background:#334155;color:white}
+button{background:#3b82f6;color:white;cursor:pointer}
+button:hover{opacity:0.85}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px;text-align:center}
+th{background:#334155}
+tr:nth-child(even){background:#1e293b}
+h2,h3{margin:0 0 10px 0}
+.flex{display:flex;gap:10px;flex-wrap:wrap}
+.flex > div{flex:1}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<!-- KPI -->
+<div class="card">
+<h2>Total Quantity</h2>
+<h1 id="totalQty">0</h1>
+</div>
+
+<!-- Add Entry -->
+<div class="card">
+<h3>➕ Add Entry</h3>
+<input type="text" id="port" placeholder="Port Number">
+<input type="text" id="name" placeholder="Name">
+<input type="number" id="qty" placeholder="Quantity">
+<button onclick="saveData()">Add Entry</button>
+</div>
+
+<!-- OCR -->
+<div class="card">
+<h3>📷 Scan Excel Table</h3>
+<input type="file" id="imageInput">
+<button onclick="readImage()">Scan & Preview</button>
+</div>
+
+<!-- Preview -->
+<div class="card" id="previewBox" style="display:none;">
+<h3>🔍 Preview Before Saving</h3>
+<table id="previewTable"></table>
+<button onclick="confirmSave()">Confirm Save</button>
+</div>
+
+<!-- Logo Upload -->
+<div class="card">
+<h3>🖊 Upload Company Logo</h3>
+<input type="file" id="logoInput">
+<button onclick="uploadLogo()">Upload Logo</button>
+</div>
+
+<!-- PDF Report -->
+<div class="card">
+<h3>📄 PDF Report</h3>
+<select id="itemSelect" multiple style="height:120px"></select>
+<button onclick="downloadPDF()">Download Selected</button>
+<button onclick="downloadAllPDF()">Download All</button>
+</div>
+
+<!-- Table -->
+<div class="card">
+<h3>📋 Entries</h3>
+<table>
+<thead>
+<tr>
+<th>Date</th>
+<th>Port</th>
+<th>Name</th>
+<th>Qty</th>
+</tr>
+</thead>
+<tbody id="tableBody"></tbody>
+</table>
+</div>
+
+<!-- Chart -->
+<div class="card">
+<h3>📊 Distribution</h3>
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<script>
+const apiURL = "PUT_YOUR_WEB_APP_URL_HERE";
+
+let allData=[];
+let previewData=[];
+
+function cleanOCR(value,type){
+value=value.trim();
+if(type==="number"){
+value=value.replace(/O/g,"0").replace(/I/g,"1").replace(/[^0-9]/g,"");
+}
+if(type==="text"){
+value=value.replace(/[^a-zA-Z\s]/g,"");
+}
+return value;
+}
+
+async function loadData(){
+let res=await fetch(apiURL);
+allData=await res.json();
+renderTable(allData);
+updateTotal(allData);
+drawChart(allData);
+loadItems();
+}
+
+function renderTable(data){
+let tbody=document.getElementById("tableBody");
+tbody.innerHTML="";
+data.forEach(r=>{
+tbody.innerHTML+=`
+<tr>
+<td>${new Date(r.date).toLocaleDateString()}</td>
+<td>${r.port}</td>
+<td>${r.name}</td>
+<td>${r.qty}</td>
+</tr>`;
+});
+}
+
+function updateTotal(data){
+let total=0;
+data.forEach(r=> total+=Number(r.qty));
+document.getElementById("totalQty").innerText=total;
+}
+
+function saveData(){
+let port=document.getElementById("port").value;
+let name=document.getElementById("name").value;
+let qty=document.getElementById("qty").value;
+
+fetch(apiURL,{
+method:"POST",
+body:JSON.stringify({port,name,qty})
+}).then(()=>loadData());
+}
+
+function showPreview(data){
+previewData=data;
+let table=document.getElementById("previewTable");
+table.innerHTML="<tr><th>Port</th><th>Name</th><th>Qty</th></tr>";
+data.forEach(r=>{
+table.innerHTML+=`
+<tr>
+<td>${r.port}</td>
+<td>${r.name}</td>
+<td>${r.qty}</td>
+</tr>`;
+});
+document.getElementById("previewBox").style.display="block";
+}
+
+function confirmSave(){
+previewData.forEach(r=>{
+fetch(apiURL,{method:"POST",body:JSON.stringify(r)});
+});
+document.getElementById("previewBox").style.display="none";
+loadData();
+}
+
+function readImage(){
+let file=document.getElementById("imageInput").files[0];
+
+Tesseract.recognize(file,'eng')
+.then(({data:{text}})=>{
+
+let lines=text.split("\n").map(l=>l.trim()).filter(l=>l!="");
+let header=lines[0].toLowerCase().split(/\s+/);
+
+let portIndex=header.findIndex(h=>h.includes("port"));
+let nameIndex=header.findIndex(h=>h.includes("name"));
+let qtyIndex=header.findIndex(h=>h.includes("qty")||h.includes("quantity"));
+
+let extracted=[];
+
+for(let i=1;i<lines.length;i++){
+let cols=lines[i].split(/\s+/);
+if(cols.length>=header.length){
+extracted.push({
+port:cleanOCR(cols[portIndex],"number"),
+name:cleanOCR(cols[nameIndex],"text"),
+qty:cleanOCR(cols[qtyIndex],"number")
+});
+}
+}
+
+showPreview(extracted);
+
+});
+}
+
+function drawChart(data){
+let ports={};
+data.forEach(r=>{
+let key=r.port+" - "+r.name;
+ports[key]=(ports[key]||0)+Number(r.qty);
+});
+new Chart(document.getElementById("chart"),{
+type:"bar",
+data:{labels:Object.keys(ports),
+datasets:[{label:"Quantity",data:Object.values(ports)}]}
+});
+}
+
+function loadItems(){
+let items=[...new Set(allData.map(r=>r.port+" - "+r.name))];
+let select=document.getElementById("itemSelect");
+select.innerHTML="";
+items.forEach(i=>{
+select.innerHTML+=`<option value="${i}">${i}</option>`;
+});
+}
+
+function downloadPDF(){
+let selected=[...document.getElementById("itemSelect").selectedOptions]
+.map(o=>o.value);
+
+fetch(apiURL+"?action=pdf",{
+method:"POST",
+body:JSON.stringify({items:selected})
+})
+.then(res=>res.text())
+.then(url=>window.open(url));
+}
+
+function downloadAllPDF(){
+fetch(apiURL+"?action=pdf",{
+method:"POST",
+body:JSON.stringify({items:[]})
+})
+.then(res=>res.text())
+.then(url=>window.open(url));
+}
+
+function uploadLogo(){
+let file=document.getElementById("logoInput").files[0];
+let reader=new FileReader();
+
+reader.onload=function(e){
+fetch(apiURL,{
+method:"POST",
+body:JSON.stringify({
+action:"uploadLogo",
+base64:e.target.result,
+fileName:file.name
+})
+})
+.then(res=>res.text())
+.then(msg=>alert(msg));
+};
+
+reader.readAsDataURL(file);
+}
+
+loadData();
+</script>
+
+</body>
+</html>
