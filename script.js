@@ -238,7 +238,7 @@ async function processOCR(file) {
     document.getElementById('ocrStatus').classList.remove('hidden');
 
     try {
-        // Use both English and Arabic for better recognition in mixed invoices
+        // Use both English and Arabic for better recognition in ACUD forms
         const result = await Tesseract.recognize(
             file,
             'eng+ara',
@@ -248,47 +248,63 @@ async function processOCR(file) {
         const text = result.data.text;
         console.log("OCR Raw Text:", text);
 
-        // --- Enhanced Parsing Logic ---
+        // --- Specialized Table Parsing Logic ---
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
-        // 1. Port/Reference Parsing (Flexible keywords)
-        const portKeywords = "Port|P|Ref|Reference|Code|ID|#|رقم|المنفذ";
-        const portRegex = new RegExp(`(?:${portKeywords})\\s*[:#-]?\\s*([A-Z0-9-]+)`, "i");
-        const portMatch = text.match(portRegex) || text.match(/([A-Z]-\d{2,5})/i);
+        let extractedPort = "", extractedQty = "", extractedName = "";
 
-        // 2. Quantity Parsing (Flexible keywords + Arabic)
-        const qtyKeywords = "Quantity|Qty|Q|Amount|Cant|Total|PCS|Units|الكمية|عدد";
-        const qtyRegex = new RegExp(`(?:${qtyKeywords})\\s*[:.-]?\\s*(\\d+)`, "i");
-        let qtyMatch = text.match(qtyRegex) || text.match(/x\s*(\d+)/i);
+        // Target Keywords for ACUD form
+        // Headers: رقم الصنف (Part No), الكمية المنصرفة (Qty)
+        const partKeywords = /رقم\s*الصنف|Part\s*No|Ref|JL\d+|J\d+[A-Z]/i;
 
-        // Fallback: If no Qty keyword but we found a port, look for standalone numbers in same line or next
-        if (!qtyMatch && portMatch) {
-            const lines = text.split('\n');
-            const portLineIdx = lines.findIndex(l => l.includes(portMatch[1]));
-            if (portLineIdx !== -1) {
-                const searchArea = lines.slice(portLineIdx, portLineIdx + 3).join(' ');
-                const standaloneNum = searchArea.match(/\s(\d{1,4})\s/);
-                if (standaloneNum) qtyMatch = standaloneNum;
+        // Look for common Aruba/HP hardware patterns: JL704C, J9281D, R8Q70A, J9151E
+        const hardwareRegex = /([A-Z]{1,2}[0-9]{3,4}[A-Z]{0,1})/i;
+
+        for (let line of lines) {
+            const pMatch = line.match(hardwareRegex);
+            if (pMatch && !extractedPort) {
+                extractedPort = pMatch[1];
+
+                // In ACUD table, qty is usually on the same line or immediate next/prev.
+                const nums = line.match(/\b(\d{1,4})\b/g);
+                if (nums) {
+                    // Extract the number that is NOT part of the hardware ID
+                    const likelyQty = nums.find(n => !extractedPort.includes(n) && n.length <= 3);
+                    if (likelyQty) extractedQty = likelyQty;
+                }
             }
         }
 
-        // 3. Name/Item Parsing (Better Heuristics)
-        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-        const forbidden = /Invoice|Date|Total|Port|Qty|Quantity|Page|Tax|Amount|#|:|--|==|http|www|Tel|Address|صنف|الكمية/i;
-        const nameCandidates = lines.filter(l => !forbidden.test(l));
-        const nameMatch = nameCandidates.length > 0 ? nameCandidates[0] : null;
+        // Fallback for Qty if not found in port line
+        if (!extractedQty) {
+            const qMatch = text.match(/(?:الكمية|المنصرفة|Qty|Quantity|PCS|Units)\s*[:.-]?\s*(\d+)/i);
+            if (qMatch) extractedQty = qMatch[1];
+        }
+
+        // Name Heuristic: Look for Aruba/HP descriptions (Switch, Cable, Cord, etc.)
+        const nameKeywords = /Aruba|Switch|Cable|Power|Cord|Transceiver|SFP|6200M|8360|X372/i;
+        const nameLine = lines.find(l => nameKeywords.test(l));
+        if (nameLine) {
+            extractedName = nameLine.split(/[#:]/)[0].replace(/[0-9]+\./, '').trim();
+        } else {
+            // General Fallback
+            const forbidden = /Invoice|Date|Total|Port|Qty|Quantity|Page|Tax|Amount|#|:|--|==|شركة|العاصمة|إذن|صرف|تاريخ/i;
+            const nameCandidates = lines.filter(l => l.length > 8 && !forbidden.test(l));
+            extractedName = nameCandidates.length > 0 ? nameCandidates[0] : "";
+        }
 
         // --- Fill Inputs ---
         let foundAny = false;
-        if (portMatch) {
-            document.getElementById('portInput').value = portMatch[1].trim();
+        if (extractedPort) {
+            document.getElementById('portInput').value = extractedPort;
             foundAny = true;
         }
-        if (qtyMatch) {
-            document.getElementById('qtyInput').value = qtyMatch[1];
+        if (extractedQty) {
+            document.getElementById('qtyInput').value = extractedQty;
             foundAny = true;
         }
-        if (nameMatch) {
-            document.getElementById('nameInput').value = nameMatch;
+        if (extractedName) {
+            document.getElementById('nameInput').value = extractedName;
             foundAny = true;
         }
 
@@ -298,23 +314,22 @@ async function processOCR(file) {
             Swal.fire({
                 icon: 'success',
                 title: 'تم استخراج البيانات',
-                text: 'يرجى التأكد من صحة البيانات قبل الحفظ',
+                text: 'تم التعرف على صنف: ' + (extractedPort || "غير معروف"),
                 timer: 4000,
                 showConfirmButton: false
             });
         } else {
-            console.warn("OCR failed to find specific fields. Text length:", text.length);
             Swal.fire({
                 icon: 'info',
                 title: 'تنبيه',
-                text: 'لم نتمكن من استخراج بيانات واضحة. تأكد من جودة الصورة أو أدخل البيانات يدوياً.',
+                text: 'لم نتمكن من استخراج بيانات واضحة تلقائياً. يرجى إدخالها يدوياً.',
             });
         }
 
     } catch (error) {
         console.error(error);
         document.getElementById('ocrStatus').classList.add('hidden');
-        Swal.fire('خطأ', 'حدث خطأ أثناء قراءة الصورة', 'error');
+        Swal.fire('خطأ', 'حدث خطأ أثناء قراءة الصورة. تأكد من جودة الصورة.', 'error');
     }
 }
 
