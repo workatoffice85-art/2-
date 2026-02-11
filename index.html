@@ -1,278 +1,178 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Warehouse System</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js"></script>
-
-<style>
-body{margin:0;font-family:Segoe UI;background:#0f172a;color:white}
-.container{max-width:1200px;margin:auto;padding:20px}
-.card{background:#1e293b;padding:20px;border-radius:16px;margin-bottom:20px}
-input,button,select{padding:10px;border-radius:8px;border:none;width:100%;margin:5px 0}
-input,select{background:#334155;color:white}
-button{background:#3b82f6;color:white;cursor:pointer}
-button:hover{opacity:0.85}
-table{width:100%;border-collapse:collapse}
-th,td{padding:10px;text-align:center}
-th{background:#334155}
-tr:nth-child(even){background:#1e293b}
-h2,h3{margin:0 0 10px 0}
-.flex{display:flex;gap:10px;flex-wrap:wrap}
-.flex > div{flex:1}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة المخزون الذكي</title>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Tesseract.js -->
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js'></script>
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
-
 <body>
-<div class="container">
+    <div class="container">
+        <!-- Sidebar / Header -->
+        <header class="header">
+            <div class="logo">
+                <i class="fa-solid fa-boxes-stacked"></i>
+                <h1>المخزن الذكي</h1>
+            </div>
+            <nav>
+                <button class="nav-btn active" id="btn-dashboard" onclick="switchTab('dashboard')"><i class="fa-solid fa-chart-line"></i> لوحة التحكم</button>
+                <button class="nav-btn" id="btn-entry" onclick="switchTab('entry')"><i class="fa-solid fa-plus"></i> إضافة عملية</button>
+                <button class="nav-btn" id="btn-reports" onclick="switchTab('reports')"><i class="fa-solid fa-file-pdf"></i> التقارير</button>
+            </nav>
+        </header>
 
-<!-- KPI -->
-<div class="card">
-<h2>Total Quantity</h2>
-<h1 id="totalQty">0</h1>
-</div>
+        <!-- Main Content -->
+        <main class="main-content">
+            
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="tab-content active">
+                <div class="cards-grid">
+                    <div class="card summary-card" style="--accent: #4e73df;">
+                        <div class="card-icon"><i class="fa-solid fa-box-open"></i></div>
+                        <div class="card-info">
+                            <h3>إجمالي الكميات</h3>
+                            <p id="totalQuantity">0</p>
+                        </div>
+                    </div>
+                    <div class="card summary-card" style="--accent: #1cc88a;">
+                        <div class="card-icon"><i class="fa-solid fa-calendar-check"></i></div>
+                        <div class="card-info">
+                            <h3>عمليات اليوم</h3>
+                            <p id="todayEntries">0</p>
+                        </div>
+                    </div>
+                    <div class="card summary-card" style="--accent: #36b9cc;">
+                        <div class="card-icon"><i class="fa-solid fa-chart-pie"></i></div>
+                        <div class="card-info">
+                            <h3>أعلى صنف</h3>
+                            <p id="topItem">-</p>
+                        </div>
+                    </div>
+                </div>
 
-<!-- Add Entry -->
-<div class="card">
-<h3>➕ Add Entry</h3>
-<input type="text" id="port" placeholder="Port Number">
-<input type="text" id="name" placeholder="Name">
-<input type="number" id="qty" placeholder="Quantity">
-<button onclick="saveData()">Add Entry</button>
-</div>
+                <div class="charts-grid">
+                    <div class="card chart-card">
+                        <h3><i class="fa-solid fa-chart-bar"></i> التحليل الشهري</h3>
+                        <div class="chart-container">
+                            <canvas id="monthlyChart"></canvas>
+                        </div>
+                    </div>
+                    <div class="card chart-card">
+                        <h3><i class="fa-solid fa-chart-pie"></i> توزيع الأصناف</h3>
+                        <div class="chart-container">
+                            <canvas id="itemsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
 
-<!-- OCR -->
-<div class="card">
-<h3>📷 Scan Excel Table</h3>
-<input type="file" id="imageInput">
-<button onclick="readImage()">Scan & Preview</button>
-</div>
+                <div class="card table-card">
+                    <div class="card-header">
+                        <h3><i class="fa-solid fa-list"></i> أحدث العمليات</h3>
+                        <button onclick="refreshData()" class="action-btn sm"><i class="fa-solid fa-rotate"></i> تحديث</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>التاريخ</th>
+                                    <th>الميناء (Port)</th>
+                                    <th>الاسم (Name)</th>
+                                    <th>الكمية (Qty)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dataTableBody">
+                                <tr><td colspan="4" class="loading-text">جاري تحميل البيانات...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
 
-<!-- Preview -->
-<div class="card" id="previewBox" style="display:none;">
-<h3>🔍 Preview Before Saving</h3>
-<table id="previewTable"></table>
-<button onclick="confirmSave()">Confirm Save</button>
-</div>
+            <!-- Entry Form Section -->
+            <section id="entry" class="tab-content">
+                <div class="form-container card">
+                    <h2><i class="fa-solid fa-pen-to-square"></i> تسجيل بيان جديد</h2>
+                    
+                    <!-- OCR Upload -->
+                    <div class="ocr-section">
+                        <div class="upload-area" id="dropZone">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                            <p>اسحب صورة الفاتورة هنا أو اضغط للرفع (Tesseract OCR)</p>
+                            <input type="file" id="ocrImageInput" accept="image/*" hidden>
+                        </div>
+                        <div id="ocrStatus" class="ocr-status hidden">
+                            <div class="loader"></div>
+                            <span>جاري قراءة البيانات...</span>
+                        </div>
+                        <div id="ocrPreview" class="ocr-preview hidden">
+                            <img id="previewImg" src="" alt="Preview">
+                        </div>
+                    </div>
 
-<!-- Logo Upload -->
-<div class="card">
-<h3>🖊 Upload Company Logo</h3>
-<input type="file" id="logoInput">
-<button onclick="uploadLogo()">Upload Logo</button>
-</div>
+                    <form id="dataForm">
+                        <div class="form-group">
+                            <label>رقم الميناء (Port Number)</label>
+                            <input type="text" id="portInput" name="port" required placeholder="مثال: A-101">
+                        </div>
+                        <div class="form-group">
+                            <label>اسم الصنف (Name)</label>
+                            <input type="text" id="nameInput" name="name" required placeholder="مثال: قطع غيار">
+                        </div>
+                        <div class="form-group">
+                            <label>الكمية (Quantity)</label>
+                            <input type="number" id="qtyInput" name="quantity" required placeholder="0">
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="action-btn primary"><i class="fa-solid fa-floppy-disk"></i> حفظ البيانات</button>
+                            <button type="button" onclick="clearForm()" class="action-btn secondary">مسح</button>
+                        </div>
+                    </form>
+                </div>
+            </section>
 
-<!-- PDF Report -->
-<div class="card">
-<h3>📄 PDF Report</h3>
-<select id="itemSelect" multiple style="height:120px"></select>
-<button onclick="downloadPDF()">Download Selected</button>
-<button onclick="downloadAllPDF()">Download All</button>
-</div>
+            <!-- Reports Section -->
+            <section id="reports" class="tab-content">
+                <div class="reports-container card">
+                    <h2><i class="fa-solid fa-print"></i> إصدار التقارير</h2>
+                    <p>قم بتوليد تقرير PDF يحتوي على ملخص العمليات والرسوم البيانية.</p>
+                    
+                    <div class="report-options">
+                        <button onclick="requestPDF()" class="pdf-btn" id="generatePdfBtn">
+                            <i class="fa-solid fa-file-pdf"></i>
+                            <span>توليد التقرير الشامل (PDF)</span>
+                        </button>
+                    </div>
+                    
+                    <div id="pdfLoading" class="hidden">
+                        <div class="loader"></div>
+                        <p>جاري إنشاء التقرير، يرجى الانتظار...</p>
+                    </div>
 
-<!-- Table -->
-<div class="card">
-<h3>📋 Entries</h3>
-<table>
-<thead>
-<tr>
-<th>Date</th>
-<th>Port</th>
-<th>Name</th>
-<th>Qty</th>
-</tr>
-</thead>
-<tbody id="tableBody"></tbody>
-</table>
-</div>
+                    <div id="pdfResult" class="pdf-result hidden">
+                        <div class="success-icon"><i class="fa-solid fa-check-circle"></i></div>
+                        <p>تم إنشاء التقرير بنجاح!</p>
+                        <a href="#" id="pdfDownloadLink" target="_blank" class="download-link">
+                            <i class="fa-solid fa-download"></i> تحميل الملف
+                        </a>
+                    </div>
+                </div>
+            </section>
 
-<!-- Chart -->
-<div class="card">
-<h3>📊 Distribution</h3>
-<canvas id="chart"></canvas>
-</div>
+        </main>
+    </div>
 
-</div>
-
-<script>
-const apiURL = "https://script.google.com/macros/s/AKfycbwm2PAdWgB8CJBtv2essIinqnjrUCer63Vvdn1owyEjqa723PJQ6gz0eYNlzVM9eV6p3g/exec";
-
-let allData=[];
-let previewData=[];
-
-function cleanOCR(value,type){
-value=value.trim();
-if(type==="number"){
-value=value.replace(/O/g,"0").replace(/I/g,"1").replace(/[^0-9]/g,"");
-}
-if(type==="text"){
-value=value.replace(/[^a-zA-Z\s]/g,"");
-}
-return value;
-}
-
-async function loadData(){
-let res=await fetch(apiURL);
-allData=await res.json();
-renderTable(allData);
-updateTotal(allData);
-drawChart(allData);
-loadItems();
-}
-
-function renderTable(data){
-let tbody=document.getElementById("tableBody");
-tbody.innerHTML="";
-data.forEach(r=>{
-tbody.innerHTML+=`
-<tr>
-<td>${new Date(r.date).toLocaleDateString()}</td>
-<td>${r.port}</td>
-<td>${r.name}</td>
-<td>${r.qty}</td>
-</tr>`;
-});
-}
-
-function updateTotal(data){
-let total=0;
-data.forEach(r=> total+=Number(r.qty));
-document.getElementById("totalQty").innerText=total;
-}
-
-function saveData(){
-let port=document.getElementById("port").value;
-let name=document.getElementById("name").value;
-let qty=document.getElementById("qty").value;
-
-fetch(apiURL,{
-method:"POST",
-body:JSON.stringify({port,name,qty})
-}).then(()=>loadData());
-}
-
-function showPreview(data){
-previewData=data;
-let table=document.getElementById("previewTable");
-table.innerHTML="<tr><th>Port</th><th>Name</th><th>Qty</th></tr>";
-data.forEach(r=>{
-table.innerHTML+=`
-<tr>
-<td>${r.port}</td>
-<td>${r.name}</td>
-<td>${r.qty}</td>
-</tr>`;
-});
-document.getElementById("previewBox").style.display="block";
-}
-
-function confirmSave(){
-previewData.forEach(r=>{
-fetch(apiURL,{method:"POST",body:JSON.stringify(r)});
-});
-document.getElementById("previewBox").style.display="none";
-loadData();
-}
-
-function readImage(){
-let file=document.getElementById("imageInput").files[0];
-
-Tesseract.recognize(file,'eng')
-.then(({data:{text}})=>{
-
-let lines=text.split("\n").map(l=>l.trim()).filter(l=>l!="");
-let header=lines[0].toLowerCase().split(/\s+/);
-
-let portIndex=header.findIndex(h=>h.includes("port"));
-let nameIndex=header.findIndex(h=>h.includes("name"));
-let qtyIndex=header.findIndex(h=>h.includes("qty")||h.includes("quantity"));
-
-let extracted=[];
-
-for(let i=1;i<lines.length;i++){
-let cols=lines[i].split(/\s+/);
-if(cols.length>=header.length){
-extracted.push({
-port:cleanOCR(cols[portIndex],"number"),
-name:cleanOCR(cols[nameIndex],"text"),
-qty:cleanOCR(cols[qtyIndex],"number")
-});
-}
-}
-
-showPreview(extracted);
-
-});
-}
-
-function drawChart(data){
-let ports={};
-data.forEach(r=>{
-let key=r.port+" - "+r.name;
-ports[key]=(ports[key]||0)+Number(r.qty);
-});
-new Chart(document.getElementById("chart"),{
-type:"bar",
-data:{labels:Object.keys(ports),
-datasets:[{label:"Quantity",data:Object.values(ports)}]}
-});
-}
-
-function loadItems(){
-let items=[...new Set(allData.map(r=>r.port+" - "+r.name))];
-let select=document.getElementById("itemSelect");
-select.innerHTML="";
-items.forEach(i=>{
-select.innerHTML+=`<option value="${i}">${i}</option>`;
-});
-}
-
-function downloadPDF(){
-let selected=[...document.getElementById("itemSelect").selectedOptions]
-.map(o=>o.value);
-
-fetch(apiURL+"?action=pdf",{
-method:"POST",
-body:JSON.stringify({items:selected})
-})
-.then(res=>res.text())
-.then(url=>window.open(url));
-}
-
-function downloadAllPDF(){
-fetch(apiURL+"?action=pdf",{
-method:"POST",
-body:JSON.stringify({items:[]})
-})
-.then(res=>res.text())
-.then(url=>window.open(url));
-}
-
-function uploadLogo(){
-let file=document.getElementById("logoInput").files[0];
-let reader=new FileReader();
-
-reader.onload=function(e){
-fetch(apiURL,{
-method:"POST",
-body:JSON.stringify({
-action:"uploadLogo",
-base64:e.target.result,
-fileName:file.name
-})
-})
-.then(res=>res.text())
-.then(msg=>alert(msg));
-};
-
-reader.readAsDataURL(file);
-}
-
-loadData();
-</script>
-
+    <!-- Scripts -->
+    <script src="script.js"></script>
 </body>
 </html>
