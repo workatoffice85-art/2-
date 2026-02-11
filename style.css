@@ -410,6 +410,26 @@ nav {
     border-radius: 6px;
 }
 
+/* Dashboard Tables Grid */
+.tables-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+    gap: 20px;
+}
+
+.badge {
+    background: var(--light);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-weight: 700;
+    color: var(--primary);
+    font-size: 0.9rem;
+}
+
+.text-center {
+    text-align: center !important;
+}
+
 .pdf-result {
     margin-top: 30px;
     animation: fadeIn 0.5s ease;
