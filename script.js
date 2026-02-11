@@ -240,30 +240,54 @@ async function processOCR(file) {
     try {
         const result = await Tesseract.recognize(
             file,
-            'eng', // Default to English, can add 'ara' if needed
+            'eng',
             { logger: m => console.log(m) }
         );
 
         const text = result.data.text;
-        console.log("OCR Text:", text);
+        console.log("OCR Raw Text:", text);
 
-        // Simple Parsing Logic (Regex to find patterns)
-        // Improve regex based on your specific receipt format
-        const portMatch = text.match(/Port\s*[:#-]?\s*([A-Z0-9-]+)/i);
-        const qtyMatch = text.match(/Q(?:uantity|ty)\s*[:.-]?\s*(\d+)/i);
-        // Name is harder to regex generically, might take the first non-keyword line
+        // --- Robust Parsing Logic ---
 
-        if (portMatch) document.getElementById('portInput').value = portMatch[1];
+        // 1. Port Parsing
+        // Common patterns: Port A-101, P:A101, #A101, or just A-101
+        const portMatch = text.match(/(?:Port|P|Ref|#)\s*[:#-]?\s*([A-Z0-9-]+)/i) ||
+            text.match(/([A-Z]-\d{2,4})/);
+
+        // 2. Quantity Parsing
+        // Common patterns: Qty: 10, Quantity 50, x100, Cantidad: 5, or just "100" in a line after "Qty"
+        const qtyMatch = text.match(/(?:Quantity|Qty|Q|Amount|Cant|Total)\s*[:.-]?\s*(\d+)/i) ||
+            text.match(/x\s*(\d+)/i);
+
+        // 3. Name Parsing (Heuristic)
+        // Find lines that are likely to be names (no keywords, long enough)
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
+        const nameCandidates = lines.filter(l => !/Invoice|Date|Total|Port|Qty|Quantity|Page|Tax|Amount|#|:|--|==/i.test(l));
+        const nameMatch = nameCandidates.length > 0 ? nameCandidates[0] : null;
+
+        // --- Fill Inputs ---
+        if (portMatch) document.getElementById('portInput').value = portMatch[1].trim();
         if (qtyMatch) document.getElementById('qtyInput').value = qtyMatch[1];
+        if (nameMatch) document.getElementById('nameInput').value = nameMatch;
 
         document.getElementById('ocrStatus').classList.add('hidden');
-        Swal.fire({
-            icon: 'success',
-            title: 'تم قراءة البيانات',
-            text: 'يرجى مراجعة البيانات قبل الحفظ',
-            timer: 2000,
-            showConfirmButton: false
-        });
+
+        if (portMatch || qtyMatch || nameMatch) {
+            Swal.fire({
+                icon: 'success',
+                title: 'تم قراءة البيانات',
+                text: 'يرجى مراجعة البيانات قبل الحفظ',
+                timer: 3000,
+                showConfirmButton: false
+            });
+        } else {
+            console.warn("OCR could not extract clear fields");
+            Swal.fire({
+                icon: 'info',
+                title: 'تنبيه',
+                text: 'لم نتمكن من استخراج بيانات دقيقة، يرجى إدخالها يدوياً',
+            });
+        }
 
     } catch (error) {
         console.error(error);
