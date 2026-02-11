@@ -1,6 +1,6 @@
 // Configuration
 // REPLACE THIS URL AFTER DEPLOYING THE APPS SCRIPT
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwvHbBujllbjOnHFkaRIZhwbRQeDzxcpnUPDWfqPj_wxv_SnIi9oKddFcvpZQzGoPXdeQ/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwzpVVyK10I9rSavE4Bh63HPjPX4LaUIIkdbb-G0qrxd8AqHZQt-tr2JFsvU8jTxE_m1A/exec';
 
 // Global Data
 let inventoryData = [];
