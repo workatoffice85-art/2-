@@ -1,6 +1,6 @@
 // Configuration
 // REPLACE THIS URL AFTER DEPLOYING THE APPS SCRIPT
-const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwfE5y4aQYr3tUbN2nKJNMe3Q4fy70GQgXw8U1AI3HQitHmvMKUCHgCVTJveDiZlAZxMQ/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwvHbBujllbjOnHFkaRIZhwbRQeDzxcpnUPDWfqPj_wxv_SnIi9oKddFcvpZQzGoPXdeQ/exec';
 
 // Global Data
 let inventoryData = [];
@@ -110,10 +110,121 @@ function updateDashboard(data) {
 
     // 3. Update Charts
     updateCharts(data.charts);
+
+    // 4. Update Inventory Status Table
+    const statusBody = document.getElementById('inventoryStatusBody');
+    if (data.inventoryStatus) {
+        statusBody.innerHTML = '';
+        data.inventoryStatus.forEach(item => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.name}</td>
+                <td><span class="badge">${item.totalQty.toLocaleString()}</span></td>
+            `;
+            statusBody.appendChild(tr);
+        });
+
+        // 5. Update Report Options
+        renderReportOptions(data.inventoryStatus);
+    } else {
+        statusBody.innerHTML = '<tr><td colspan="2" class="text-center">يرجى تحديث كود Apps Script لظهور هذه البيانات</td></tr>';
+    }
 }
 
+// --- Report Options ---
+function renderReportOptions(items) {
+    const container = document.getElementById('itemsFilterList');
+    container.innerHTML = '';
 
-// --- OCR Processing ---
+    items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'checkbox-wrapper item-check';
+        div.innerHTML = `
+            <input type="checkbox" name="reportItem" value="${item.name}" checked>
+            <label>${item.name}</label>
+        `;
+        container.appendChild(div);
+    });
+}
+
+function toggleAllItems() {
+    const mainCheck = document.getElementById('selectAllItems');
+    const checks = document.querySelectorAll('input[name="reportItem"]');
+    checks.forEach(c => c.checked = mainCheck.checked);
+}
+
+// --- PDF Generation ---
+async function requestPDF() {
+    const btn = document.getElementById('generatePdfBtn');
+    const loading = document.getElementById('pdfLoading');
+    const resultDiv = document.getElementById('pdfResult');
+
+    // Get Selected Items
+    const selectedItems = Array.from(document.querySelectorAll('input[name="reportItem"]:checked'))
+        .map(cb => cb.value);
+
+    if (selectedItems.length === 0) {
+        Swal.fire('تنبيه', 'يرجى اختيار صنف واحد على الأقل', 'warning');
+        return;
+    }
+
+    // Get Logo
+    const logoInput = document.getElementById('logoInput');
+    let logoBase64 = null;
+    if (logoInput.files.length > 0) {
+        try {
+            logoBase64 = await toBase64(logoInput.files[0]);
+        } catch (e) {
+            console.error("Logo Error", e);
+            Swal.fire('خطأ', 'فشل قراءة ملف الشعار', 'error');
+            return;
+        }
+    }
+
+    if (SCRIPT_URL.includes('YOUR_')) {
+        Swal.fire('تنبيه', 'يجب ربط السكريبت الحقيقي لتوليد PDF', 'info');
+        return;
+    }
+
+    btn.classList.add('hidden');
+    loading.classList.remove('hidden');
+    resultDiv.classList.add('hidden');
+
+    try {
+        // Send POST request instead of GET to handle large payload (Base64 Logo)
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            body: JSON.stringify({
+                action: 'generatePDF',
+                items: selectedItems,
+                logo: logoBase64
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            document.getElementById('pdfDownloadLink').href = result.url;
+            resultDiv.classList.remove('hidden');
+        } else {
+            Swal.fire('خطأ', 'فشل إنشاء الملف: ' + result.message, 'error');
+            btn.classList.remove('hidden');
+        }
+    } catch (e) {
+        console.error(e);
+        Swal.fire('خطأ', 'خطأ في الشبكة', 'error');
+        btn.classList.remove('hidden');
+    } finally {
+        loading.classList.add('hidden');
+    }
+}
+
+const toBase64 = file => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result.split(',')[1]); // Remove "data:image/..."
+    reader.onerror = error => reject(error);
+});
 async function processOCR(file) {
     // Show Preview
     const reader = new FileReader();
