@@ -238,54 +238,76 @@ async function processOCR(file) {
     document.getElementById('ocrStatus').classList.remove('hidden');
 
     try {
+        // Use both English and Arabic for better recognition in mixed invoices
         const result = await Tesseract.recognize(
             file,
-            'eng',
+            'eng+ara',
             { logger: m => console.log(m) }
         );
 
         const text = result.data.text;
         console.log("OCR Raw Text:", text);
 
-        // --- Robust Parsing Logic ---
+        // --- Enhanced Parsing Logic ---
 
-        // 1. Port Parsing
-        // Common patterns: Port A-101, P:A101, #A101, or just A-101
-        const portMatch = text.match(/(?:Port|P|Ref|#)\s*[:#-]?\s*([A-Z0-9-]+)/i) ||
-            text.match(/([A-Z]-\d{2,4})/);
+        // 1. Port/Reference Parsing (Flexible keywords)
+        const portKeywords = "Port|P|Ref|Reference|Code|ID|#|رقم|المنفذ";
+        const portRegex = new RegExp(`(?:${portKeywords})\\s*[:#-]?\\s*([A-Z0-9-]+)`, "i");
+        const portMatch = text.match(portRegex) || text.match(/([A-Z]-\d{2,5})/i);
 
-        // 2. Quantity Parsing
-        // Common patterns: Qty: 10, Quantity 50, x100, Cantidad: 5, or just "100" in a line after "Qty"
-        const qtyMatch = text.match(/(?:Quantity|Qty|Q|Amount|Cant|Total)\s*[:.-]?\s*(\d+)/i) ||
-            text.match(/x\s*(\d+)/i);
+        // 2. Quantity Parsing (Flexible keywords + Arabic)
+        const qtyKeywords = "Quantity|Qty|Q|Amount|Cant|Total|PCS|Units|الكمية|عدد";
+        const qtyRegex = new RegExp(`(?:${qtyKeywords})\\s*[:.-]?\\s*(\\d+)`, "i");
+        let qtyMatch = text.match(qtyRegex) || text.match(/x\s*(\d+)/i);
 
-        // 3. Name Parsing (Heuristic)
-        // Find lines that are likely to be names (no keywords, long enough)
+        // Fallback: If no Qty keyword but we found a port, look for standalone numbers in same line or next
+        if (!qtyMatch && portMatch) {
+            const lines = text.split('\n');
+            const portLineIdx = lines.findIndex(l => l.includes(portMatch[1]));
+            if (portLineIdx !== -1) {
+                const searchArea = lines.slice(portLineIdx, portLineIdx + 3).join(' ');
+                const standaloneNum = searchArea.match(/\s(\d{1,4})\s/);
+                if (standaloneNum) qtyMatch = standaloneNum;
+            }
+        }
+
+        // 3. Name/Item Parsing (Better Heuristics)
         const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 3);
-        const nameCandidates = lines.filter(l => !/Invoice|Date|Total|Port|Qty|Quantity|Page|Tax|Amount|#|:|--|==/i.test(l));
+        const forbidden = /Invoice|Date|Total|Port|Qty|Quantity|Page|Tax|Amount|#|:|--|==|http|www|Tel|Address|صنف|الكمية/i;
+        const nameCandidates = lines.filter(l => !forbidden.test(l));
         const nameMatch = nameCandidates.length > 0 ? nameCandidates[0] : null;
 
         // --- Fill Inputs ---
-        if (portMatch) document.getElementById('portInput').value = portMatch[1].trim();
-        if (qtyMatch) document.getElementById('qtyInput').value = qtyMatch[1];
-        if (nameMatch) document.getElementById('nameInput').value = nameMatch;
+        let foundAny = false;
+        if (portMatch) {
+            document.getElementById('portInput').value = portMatch[1].trim();
+            foundAny = true;
+        }
+        if (qtyMatch) {
+            document.getElementById('qtyInput').value = qtyMatch[1];
+            foundAny = true;
+        }
+        if (nameMatch) {
+            document.getElementById('nameInput').value = nameMatch;
+            foundAny = true;
+        }
 
         document.getElementById('ocrStatus').classList.add('hidden');
 
-        if (portMatch || qtyMatch || nameMatch) {
+        if (foundAny) {
             Swal.fire({
                 icon: 'success',
-                title: 'تم قراءة البيانات',
-                text: 'يرجى مراجعة البيانات قبل الحفظ',
-                timer: 3000,
+                title: 'تم استخراج البيانات',
+                text: 'يرجى التأكد من صحة البيانات قبل الحفظ',
+                timer: 4000,
                 showConfirmButton: false
             });
         } else {
-            console.warn("OCR could not extract clear fields");
+            console.warn("OCR failed to find specific fields. Text length:", text.length);
             Swal.fire({
                 icon: 'info',
                 title: 'تنبيه',
-                text: 'لم نتمكن من استخراج بيانات دقيقة، يرجى إدخالها يدوياً',
+                text: 'لم نتمكن من استخراج بيانات واضحة. تأكد من جودة الصورة أو أدخل البيانات يدوياً.',
             });
         }
 
